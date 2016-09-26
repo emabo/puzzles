@@ -88,6 +88,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <math.h>
+#include <time.h>
 
 #ifdef STANDALONE_SOLVER
 #include <stdarg.h>
@@ -3585,10 +3586,6 @@ static char *new_game_desc(const game_params *params, random_state *rs,
     kblocks = NULL;
     kgrid = (params->killer) ? snewn(area, digit) : NULL;
 
-#ifdef STANDALONE_SOLVER
-    assert(!"This should never happen, so we don't need to create blocknames");
-#endif
-
     /*
      * Loop until we get a grid of the required difficulty. This is
      * nasty, but it seems to be unpleasantly hard to generate
@@ -5552,14 +5549,25 @@ const struct game thegame = {
 };
 
 #ifdef STANDALONE_SOLVER
+static char *gen(game_params *p, random_state *rs, int debug)
+{
+    char *aux = NULL, *desc;
+
+    desc = new_game_desc(p, rs, &aux, 0);
+    sfree(aux);
+
+    return desc;
+}
 
 int main(int argc, char **argv)
 {
     game_params *p;
     game_state *s;
-    char *id = NULL, *desc, *err;
+    char *id = NULL, *desc, *desc_gen = NULL, *err;
     int grade = FALSE;
     struct difficulty dlev;
+    random_state *rs;
+    time_t seed = time(NULL);
 
     while (--argc > 0) {
         char *p = *++argv;
@@ -5567,6 +5575,14 @@ int main(int argc, char **argv)
             solver_show_working = TRUE;
         } else if (!strcmp(p, "-g")) {
             grade = TRUE;
+        } else if (!strcmp(p, "--seed")) {
+            if (argc == 0) {
+                fprintf(stderr, "--seed needs an argument");
+                return 1;
+            }
+
+            seed = (time_t)atoi(*++argv);
+            argc--;
         } else if (*p == '-') {
             fprintf(stderr, "%s: unrecognised option `%s'\n", argv[0], p);
             return 1;
@@ -5576,19 +5592,56 @@ int main(int argc, char **argv)
     }
 
     if (!id) {
-        fprintf(stderr, "usage: %s [-g | -v] <game_id>\n", argv[0]);
+        fprintf(stderr, "usage: %s [--seed SEED] [-g | -v] <game_id:desc>\n", argv[0]);
+
+        fprintf(stderr, "-g print difficulty\n");
+        fprintf(stderr, "-v show solver\n\n");
+        fprintf(stderr, "where <game_id>:\n\n");
+
+        fprintf(stderr, "<c>x<r> = Classic\n");
+        fprintf(stderr, "<c>j = Jigsaw\n");
+        fprintf(stderr, "<c>x<r>x = X type\n");
+        fprintf(stderr, "<c>x<r>k = Killer\n\n");
+
+        fprintf(stderr, "a = SYM_NONE (0)\n");
+        fprintf(stderr, "r2 = SYMM_ROT2 (1-default)\n");
+        fprintf(stderr, "r4 = SYMM_ROT4 (2)\n");
+        fprintf(stderr, "m2 = SYMM_REF2 (3)\n");
+        fprintf(stderr, "md2 = SYMM_REF2D (4)\n");
+        fprintf(stderr, "m4 = SYMM_REF4 (5)\n");
+        fprintf(stderr, "md4 = SYMM_REF4D (6)\n");
+        fprintf(stderr, "m8 = SYMM_REF8 (7)\n\n");
+
+        fprintf(stderr, "dt = DIFF_BLOCK (0-default)\n");
+        fprintf(stderr, "db = DIFF_SIMPLE (1)\n");
+        fprintf(stderr, "di = DIFF_INTERSECT (2)\n");
+        fprintf(stderr, "da = DIFF_SET (3)\n");
+        fprintf(stderr, "de = DIFF_EXTREME (4)\n");
+        fprintf(stderr, "du = DIFF_RECURSIVE (5)\n");
         return 1;
     }
+
+    p = default_params();
+    rs = random_new((void*)&seed, sizeof(time_t));
 
     desc = strchr(id, ':');
     if (!desc) {
-        fprintf(stderr, "%s: game id expects a colon in it\n", argv[0]);
-        return 1;
+        decode_params(p, id);
+        desc = desc_gen = gen(p, rs, 0);
+        if (grade) {
+	    printf("%s\n\n", id);
+	    printf("Dim: %dx%d\n", p->c, p->r);
+	    printf("X type: %d\n", p->xtype);
+	    printf("Killer: %d\n", p->killer);
+	    printf("Symm: %d\n", p->symm);
+	    printf("Diff: %d\n\n", p->diff);
+        }
+        printf("%s\n", desc);
+    } else {
+        *desc++ = '\0';
+        decode_params(p, id);
     }
-    *desc++ = '\0';
 
-    p = default_params();
-    decode_params(p, id);
     err = validate_desc(p, desc);
     if (err) {
         fprintf(stderr, "%s: %s\n", argv[0], err);
@@ -5620,6 +5673,9 @@ int main(int argc, char **argv)
     } else {
         printf("%s\n", grid_text_format(s->cr, s->blocks, s->xtype, s->grid));
     }
+
+    if (desc_gen)
+        sfree(desc_gen);
 
     return 0;
 }
