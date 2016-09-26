@@ -5549,6 +5549,58 @@ const struct game thegame = {
 };
 
 #ifdef STANDALONE_SOLVER
+static char *grid_oneline_text_format(int cr, struct block_structure *blocks,
+			      int xtype, digit *grid)
+{
+    int x, y;
+    int totallen;
+    char *ret, *p, ch;
+
+    /*
+     * Allocate the space.
+     */
+    totallen = cr*cr;
+    ret = snewn(totallen+1, char);     /* leave room for terminating NUL */
+
+    /*
+     * Write the text.
+     */
+    p = ret;
+    for (y = 0; y < cr; y++) {
+	/*
+	 * Row of digits.
+	 */
+	for (x = 0; x < cr; x++) {
+	    /*
+	     * Digit.
+	     */
+	    digit d = grid[y*cr+x];
+
+            if (d == 0) {
+		/*
+		 * Empty space: we usually write a dot, but we'll
+		 * highlight spaces on the X-diagonals (in X mode)
+		 * by using underscores instead.
+		 */
+		if (xtype && (ondiag0(y*cr+x) || ondiag1(y*cr+x)))
+		    ch = '_';
+		else
+		    ch = '.';
+	    } else if (d <= 9) {
+                ch = '0' + d;
+	    } else {
+                ch = 'a' + d-10;
+	    }
+
+	    *p++ = ch;
+	}
+    }
+
+    assert(p - ret == totallen);
+    *p = '\0';
+    return ret;
+}
+
 static char *gen(game_params *p, random_state *rs, int debug)
 {
     char *aux = NULL, *desc;
@@ -5670,8 +5722,11 @@ int main(int argc, char **argv)
 		   dlev.kdiff==DIFF_KSUMS ? "Intermediate (sum possibilities)":
 		   dlev.kdiff==DIFF_KINTERSECT ? "Advanced (sum region intersections)":
 		   "INTERNAL ERROR: unrecognised difficulty code");
+        printf("d%d\n", dlev.diff);
+        printf("%s\n", grid_oneline_text_format(s->cr, s->blocks, s->xtype, s->grid));
     } else {
-        printf("%s\n", grid_text_format(s->cr, s->blocks, s->xtype, s->grid));
+        if (solver_show_working)
+	    printf("%s\n", grid_text_format(s->cr, s->blocks, s->xtype, s->grid));
     }
 
     if (desc_gen)
